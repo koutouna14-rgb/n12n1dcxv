@@ -1,0 +1,592 @@
+diff -ruN a/src/main/java/com/github/tejaslamba2006/stopesp/chunk/ChunkPacketRewriter.java b/src/main/java/com/github/tejaslamba2006/stopesp/chunk/ChunkPacketRewriter.java
+--- a/src/main/java/com/github/tejaslamba2006/stopesp/chunk/ChunkPacketRewriter.java	2026-11-27 08:04:12.326950573 +0000
++++ b/src/main/java/com/github/tejaslamba2006/stopesp/chunk/ChunkPacketRewriter.java	2026-11-27 08:14:24.147883490 +0000
+@@ -102,7 +102,7 @@
+                   return -1; // this player already sees the real block
+                }
+ 
+-               return ChunkPacketRewriter.this.fakeId(world, y);
++               return ChunkPacketRewriter.this.fakeId(world, x, y, z);
+             }
+          });
+          if (!result.parsed()) {
+@@ -206,8 +206,8 @@
+       }
+    }
+ 
+-   private int fakeId(World world, int y) {
+-      Material m = this.manager.fakeMaterial(world, y);
++   private int fakeId(World world, int x, int y, int z) {
++      Material m = this.manager.fakeMaterial(world, x, y, z);
+       Integer cached = (Integer)this.fakeIds.get(m);
+       if (cached != null) {
+          return cached;
+diff -ruN a/src/main/java/com/github/tejaslamba2006/stopesp/listener/AntiEspListener.java b/src/main/java/com/github/tejaslamba2006/stopesp/listener/AntiEspListener.java
+--- a/src/main/java/com/github/tejaslamba2006/stopesp/listener/AntiEspListener.java	2026-11-27 08:04:12.326797706 +0000
++++ b/src/main/java/com/github/tejaslamba2006/stopesp/listener/AntiEspListener.java	2026-11-27 08:04:47.238228776 +0000
+@@ -3,10 +3,17 @@
+ import com.github.tejaslamba2006.stopesp.StopESP;
+ import com.github.tejaslamba2006.stopesp.manager.AntiEspManager;
+ import com.github.tejaslamba2006.stopesp.util.Scheduler;
++import org.bukkit.Bukkit;
++import org.bukkit.Location;
++import org.bukkit.entity.Player;
+ import org.bukkit.event.EventHandler;
+ import org.bukkit.event.EventPriority;
+ import org.bukkit.event.Listener;
++import org.bukkit.event.player.PlayerChangedWorldEvent;
++import org.bukkit.event.player.PlayerJoinEvent;
+ import org.bukkit.event.player.PlayerQuitEvent;
++import org.bukkit.event.player.PlayerRespawnEvent;
++import org.bukkit.event.player.PlayerTeleportEvent;
+ 
+ public class AntiEspListener implements Listener {
+    private final StopESP plugin;
+@@ -24,4 +31,53 @@
+       this.manager.forgetTarget(event.getPlayer().getUniqueId());
+       Scheduler.runEntity(this.plugin, event.getPlayer(), () -> this.manager.cleanupPlayer(event.getPlayer()));
+    }
++
++   // Hide-first: the entity tracker pairs players at the end of the tick, usually before our async scan has
++   // run, so without this a nametag cheat sees everyone nearby for a few ticks after a join or teleport.
++   // On Paper these run inside the event (before the tracker), so the first thing the client ever
++   // receives is "nothing"; line of sight then reveals whoever is really visible within a tick or two.
++
++   @EventHandler(priority = EventPriority.MONITOR)
++   public void onJoin(PlayerJoinEvent event) {
++      this.closeBoth(event.getPlayer(), event.getPlayer().getLocation());
++   }
++
++   @EventHandler(priority = EventPriority.MONITOR)
++   public void onWorldChange(PlayerChangedWorldEvent event) {
++      this.closeBoth(event.getPlayer(), event.getPlayer().getLocation());
++   }
++
++   @EventHandler(priority = EventPriority.MONITOR)
++   public void onRespawn(PlayerRespawnEvent event) {
++      this.closeBoth(event.getPlayer(), event.getRespawnLocation());
++   }
++
++   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
++   public void onTeleport(PlayerTeleportEvent event) {
++      Location to = event.getTo();
++      Location from = event.getFrom();
++      // Small hops (pearls, corrections) are covered by the normal scan; only long jumps need hide-first.
++      if (to == null || to.getWorld() == null || (to.getWorld().equals(from.getWorld()) && from.distanceSquared(to) < 16.0 * 16.0)) {
++         return;
++      }
++      this.closeBoth(event.getPlayer(), to);
++   }
++
++   private void closeBoth(Player player, Location around) {
++      if (around == null || around.getWorld() == null) {
++         return;
++      }
++      Location where = around.clone();
++      Runnable task = () -> {
++         if (player.isOnline()) {
++            this.manager.failCloseViewer(player, where);
++            this.manager.failCloseTarget(player, where);
++         }
++      };
++      if (!Scheduler.isFolia() && Bukkit.isPrimaryThread()) {
++         task.run(); // before the tracker update at the end of this tick
++      } else {
++         Scheduler.runEntity(this.plugin, player, task);
++      }
++   }
+ }
+diff -ruN a/src/main/java/com/github/tejaslamba2006/stopesp/listener/AntiXrayPacketListener.java b/src/main/java/com/github/tejaslamba2006/stopesp/listener/AntiXrayPacketListener.java
+--- a/src/main/java/com/github/tejaslamba2006/stopesp/listener/AntiXrayPacketListener.java	2026-11-27 08:04:12.326786444 +0000
++++ b/src/main/java/com/github/tejaslamba2006/stopesp/listener/AntiXrayPacketListener.java	2026-11-27 08:14:24.148110152 +0000
+@@ -62,7 +62,7 @@
+             Material type = data.getType();
+             if (mgr.getDsConfig().shouldProtect(type, pos.getY()) && mgr.isHiddenProtected(player, pos.getX(), pos.getY(), pos.getZ())) {
+                PacketContainer copy = event.getPacket().deepClone(); // packets can be shared between players
+-               copy.getBlockData().write(0, WrappedBlockData.createData(mgr.fakeMaterial(player.getWorld(), pos.getY())));
++               copy.getBlockData().write(0, WrappedBlockData.createData(mgr.fakeMaterial(player.getWorld(), pos.getX(), pos.getY(), pos.getZ())));
+                event.setPacket(copy);
+             }
+          }
+@@ -92,7 +92,7 @@
+                      target = (MultiBlockChangeInfo[])copy.getMultiBlockChangeInfoArrays().read(0);
+                   }
+ 
+-                  target[i].setData(WrappedBlockData.createData(mgr.fakeMaterial(player.getWorld(), info.getY())));
++                  target[i].setData(WrappedBlockData.createData(mgr.fakeMaterial(player.getWorld(), info.getAbsoluteX(), info.getY(), info.getAbsoluteZ())));
+                }
+             }
+ 
+diff -ruN a/src/main/java/com/github/tejaslamba2006/stopesp/manager/AntiEspManager.java b/src/main/java/com/github/tejaslamba2006/stopesp/manager/AntiEspManager.java
+--- a/src/main/java/com/github/tejaslamba2006/stopesp/manager/AntiEspManager.java	2026-11-27 08:04:12.326814883 +0000
++++ b/src/main/java/com/github/tejaslamba2006/stopesp/manager/AntiEspManager.java	2026-11-27 08:15:41.983828926 +0000
+@@ -110,7 +110,7 @@
+       final int cachedAge;
+       boolean losVisible;
+ 
+-      Snap(Entity entity, Location loc, boolean forceVisible, boolean invisible, LosCache cache, double vx, double vy, double vz) {
++      Snap(Entity entity, Location loc, boolean forceVisible, boolean invisible, LosCache cache, double vx, double vy, double vz, double yaw, double pitch) {
+          this.entity = entity;
+          this.id = entity.getUniqueId();
+          this.x = loc.getX();
+@@ -121,7 +121,7 @@
+          this.height = entity.getHeight();
+          this.forceVisible = forceVisible;
+          this.invisible = invisible;
+-         boolean reuse = cache != null && cache.age < 10 && near(cache.ex, this.x) && near(cache.ey, this.y) && near(cache.ez, this.z) && near(cache.vx, vx) && near(cache.vy, vy) && near(cache.vz, vz);
++         boolean reuse = cache != null && cache.age < 10 && near(cache.ex, this.x) && near(cache.ey, this.y) && near(cache.ez, this.z) && near(cache.vx, vx) && near(cache.vy, vy) && near(cache.vz, vz) && Math.abs(cache.yaw - yaw) < 1.5 && Math.abs(cache.pitch - pitch) < 1.5;
+          this.cached = reuse;
+          this.cachedVisible = reuse && cache.visible;
+          this.cachedAge = reuse ? cache.age + 1 : 0;
+@@ -142,8 +142,10 @@
+       final double vz;
+       final boolean visible;
+       final int age;
++      final double yaw;
++      final double pitch;
+ 
+-      LosCache(double ex, double ey, double ez, double vx, double vy, double vz, boolean visible, int age) {
++      LosCache(double ex, double ey, double ez, double vx, double vy, double vz, boolean visible, int age, double yaw, double pitch) {
+          this.ex = ex;
+          this.ey = ey;
+          this.ez = ez;
+@@ -152,6 +154,8 @@
+          this.vz = vz;
+          this.visible = visible;
+          this.age = age;
++         this.yaw = yaw;
++         this.pitch = pitch;
+       }
+    }
+ 
+@@ -237,11 +241,14 @@
+          Map<UUID, LosCache> cache = (Map)this.losCache.computeIfAbsent(player.getUniqueId(), (k) -> new ConcurrentHashMap());
+          List<Snap> snaps = new ArrayList();
+ 
++         double nearR = this.dsConfig.getAntiEspNearRevealRadius();
++         double nearSq = nearR * nearR;
+          for(Candidate c : toCheck) {
+             Entity entity = c.entity;
+-            boolean own = entity instanceof Projectile projectile && player.equals(projectile.getShooter()) || entity.getPassengers().contains(player) || this.isTrusted(player, entity);
++            boolean own = entity instanceof Projectile projectile && player.equals(projectile.getShooter()) || entity.getPassengers().contains(player) || this.isTrusted(player, entity)
++                  || nearR > 0.0 && entity instanceof Player && c.distSq <= nearSq;
+             boolean invisible = this.dsConfig.isAntiEspHideInvisibleEntities() && this.isConsideredInvisible(entity);
+-            snaps.add(new Snap(entity, entity.getLocation(), own, invisible, (LosCache)cache.get(entity.getUniqueId()), ex, ey, ez));
++            snaps.add(new Snap(entity, entity.getLocation(), own, invisible, (LosCache)cache.get(entity.getUniqueId()), ex, ey, ez, eye.getYaw(), eye.getPitch()));
+          }
+ 
+          AntiXrayManager xray = this.xray();
+@@ -251,7 +258,7 @@
+                snap.losVisible = this.canSeeEntity(player, snap.entity);
+             }
+ 
+-            this.apply(player, snaps, skipped, nearbyUuids, playerHidden, cache, ex, ey, ez);
++            this.apply(player, snaps, skipped, nearbyUuids, playerHidden, cache, ex, ey, ez, eye.getYaw(), eye.getPitch());
+             return;
+          }
+ 
+@@ -261,12 +268,47 @@
+          final double peekYaw = Math.toRadians(eye.getYaw());
+          final double peekX = -Math.cos(peekYaw);
+          final double peekZ = -Math.sin(peekYaw);
++         final double reach = this.dsConfig.getAntiEspThirdPersonReach();
+          handedOff = xray.submitAsync(() -> {
+             try {
++               // Extra viewpoints: where the F5 camera would be (behind the eye, and in front for the front view),
++               // pulled in when a wall is in the way, like the vanilla camera. Computed once per scan.
++               double[][] origins = new double[2][];
++               if (reach > 0.0) {
++                  double pitchRad = Math.toRadians(eye.getPitch());
++                  double dirX = -Math.sin(peekYaw) * Math.cos(pitchRad);
++                  double dirY = -Math.sin(pitchRad);
++                  double dirZ = Math.cos(peekYaw) * Math.cos(pitchRad);
++                  for(int side = 0; side < 2; ++side) {
++                     double sign = side == 0 ? -1.0 : 1.0;
++                     for(double f = 1.0; f >= 0.5; f -= 0.25) {
++                        double cx = ex + sign * dirX * reach * f;
++                        double cy = ey + sign * dirY * reach * f;
++                        double cz = ez + sign * dirZ * reach * f;
++                        if (xray.isPathClear(world, ex, ey, ez, cx, cy, cz)) {
++                           origins[side] = new double[]{cx, cy, cz};
++                           break;
++                        }
++                     }
++                  }
++               }
++
+                for(Snap snap : snaps) {
+-                  snap.losVisible = snap.cached ? snap.cachedVisible : (this.losAsync(xray, world, ex, ey, ez, snap)
++                  if (snap.cached) {
++                     snap.losVisible = snap.cachedVisible;
++                     continue;
++                  }
++
++                  boolean vis = this.losAsync(xray, world, ex, ey, ez, snap)
+                         || (peekPad > 0.0 && (this.losAsync(xray, world, ex + peekX * peekPad, ey, ez + peekZ * peekPad, snap)
+-                        || this.losAsync(xray, world, ex - peekX * peekPad, ey, ez - peekZ * peekPad, snap))));
++                        || this.losAsync(xray, world, ex - peekX * peekPad, ey, ez - peekZ * peekPad, snap)));
++                  for(int i = 0; i < 2 && !vis; ++i) {
++                     if (origins[i] != null) {
++                        vis = this.losAsync(xray, world, origins[i][0], origins[i][1], origins[i][2], snap);
++                     }
++                  }
++
++                  snap.losVisible = vis;
+                }
+             } catch (Throwable t) {
+                this.plugin.getLogger().warning("Async ESP scan failed: " + t);
+@@ -277,7 +319,7 @@
+             Scheduler.runEntity(this.plugin, player, () -> {
+                try {
+                   if (player.isOnline()) {
+-                     this.apply(player, snaps, skipped, nearbyUuids, playerHidden, cache, ex, ey, ez);
++                     this.apply(player, snaps, skipped, nearbyUuids, playerHidden, cache, ex, ey, ez, eye.getYaw(), eye.getPitch());
+                   }
+                } finally {
+                   this.inFlight.remove(player.getUniqueId());
+@@ -290,7 +332,7 @@
+                snap.losVisible = this.canSeeEntity(player, snap.entity);
+             }
+ 
+-            this.apply(player, snaps, skipped, nearbyUuids, playerHidden, cache, ex, ey, ez);
++            this.apply(player, snaps, skipped, nearbyUuids, playerHidden, cache, ex, ey, ez, eye.getYaw(), eye.getPitch());
+          }
+       } finally {
+          if (!handedOff) {
+@@ -322,17 +364,30 @@
+    }
+ 
+    private boolean losAsync(AntiXrayManager xray, World world, double ex, double ey, double ez, Snap s) {
++      final int need = this.dsConfig.getAntiEspMinVisibleSamples();
++      int seen = 0;
+       if (s.living) {
+-         if (xray.isPathClear(world, ex, ey, ez, s.x, s.y + s.eyeHeight, s.z) || xray.isPathClear(world, ex, ey, ez, s.x, s.y + 0.1, s.z) || xray.isPathClear(world, ex, ey, ez, s.x, s.y + (s.eyeHeight + 0.1) / 2.0, s.z)) {
++         // Centre line: head, feet, middle.
++         double mid = (s.eyeHeight + 0.1) / 2.0;
++         if (xray.isPathClear(world, ex, ey, ez, s.x, s.y + s.eyeHeight, s.z) && ++seen >= need) {
++            return true;
++         }
++
++         if (xray.isPathClear(world, ex, ey, ez, s.x, s.y + 0.1, s.z) && ++seen >= need) {
+             return true;
+          }
+ 
+-         // Hitbox edges (head, middle, feet): a player with only an arm or a shoulder showing counts as visible.
+-         double[] heights = new double[]{s.eyeHeight, (s.eyeHeight + 0.1) / 2.0, 0.1};
++         if (xray.isPathClear(world, ex, ey, ez, s.x, s.y + mid, s.z) && ++seen >= need) {
++            return true;
++         }
++
++         // Hitbox corners (head, middle, feet). One lone corner no longer reveals the whole player (and the
++         // nametag a cheat draws above their head); `need` of the 15 points must be visible.
++         double[] heights = new double[]{s.eyeHeight, mid, 0.1};
+          for(double h : heights) {
+             for(int sx = -1; sx <= 1; sx += 2) {
+                for(int sz = -1; sz <= 1; sz += 2) {
+-                  if (xray.isPathClear(world, ex, ey, ez, s.x + sx * 0.3, s.y + h, s.z + sz * 0.3)) {
++                  if (xray.isPathClear(world, ex, ey, ez, s.x + sx * 0.3, s.y + h, s.z + sz * 0.3) && ++seen >= need) {
+                      return true;
+                   }
+                }
+@@ -342,17 +397,18 @@
+          return false;
+       }
+ 
++      // Non-living entities (items, frames, boats...) keep the original two-point test.
+       return xray.isPathClear(world, ex, ey, ez, s.x, s.y + s.height / 2.0, s.z) || xray.isPathClear(world, ex, ey, ez, s.x, s.y, s.z);
+    }
+ 
+    /** Entity thread: hide/show based on the computed results. */
+-   private void apply(Player player, List<Snap> snaps, List<Candidate> skipped, Set<UUID> nearbyUuids, Map<UUID, Entity> playerHidden, Map<UUID, LosCache> cache, double ex, double ey, double ez) {
++   private void apply(Player player, List<Snap> snaps, List<Candidate> skipped, Set<UUID> nearbyUuids, Map<UUID, Entity> playerHidden, Map<UUID, LosCache> cache, double ex, double ey, double ez, double yaw, double pitch) {
+       for(Snap snap : snaps) {
+          Entity entity = snap.entity;
+          if (!snap.cached) {
+-            cache.put(snap.id, new LosCache(snap.x, snap.y, snap.z, ex, ey, ez, snap.losVisible, 0));
++            cache.put(snap.id, new LosCache(snap.x, snap.y, snap.z, ex, ey, ez, snap.losVisible, 0, yaw, pitch));
+          } else {
+-            cache.put(snap.id, new LosCache(snap.x, snap.y, snap.z, ex, ey, ez, snap.losVisible, snap.cachedAge));
++            cache.put(snap.id, new LosCache(snap.x, snap.y, snap.z, ex, ey, ez, snap.losVisible, snap.cachedAge, yaw, pitch));
+          }
+ 
+          if (entity.isValid()) {
+@@ -413,6 +469,72 @@
+       // shared main scoreboard pulled them out of their rank/tab-sorting team and broke the tab list.
+    }
+ 
++   /**
++    * Fail-closed: hide every obfuscated player around {@code viewer} right now, before the entity tracker has
++    * a chance to send them, and drop cached line-of-sight results so the next scan has to prove visibility.
++    * Call on the viewer's entity thread (join, respawn, teleport, world change).
++    */
++   public void failCloseViewer(Player viewer, Location around) {
++      if (!this.enabled || !this.dsConfig.isAntiEspFailClosed() || !viewer.isOnline() || viewer.hasPermission("stopesp.bypass")
++            || around.getWorld() == null || !this.dsConfig.isEnabledWorld(around.getWorld()) || !this.dsConfig.isAntiEspObfuscatePlayers()) {
++         return;
++      }
++
++      Map<UUID, Entity> hidden = this.hiddenEntities.computeIfAbsent(viewer.getUniqueId(), (k) -> new ConcurrentHashMap());
++      Map<UUID, LosCache> cache = this.losCache.get(viewer.getUniqueId());
++      if (cache != null) {
++         cache.clear();
++      }
++
++      Map<UUID, Long> seen = this.lastSeen.get(viewer.getUniqueId());
++      if (seen != null) {
++         seen.clear();
++      }
++
++      double r = this.dsConfig.getAntiEspPlayerRadius();
++      double rSq = r * r;
++      for(Player other : around.getWorld().getPlayers()) {
++         if (!other.equals(viewer) && other.getLocation().distanceSquared(around) <= rSq && !this.nearEnough(other.getLocation(), around) && !this.isTrusted(viewer, other) && hidden.put(other.getUniqueId(), other) == null) {
++            viewer.hideEntity(this.plugin, other);
++         }
++      }
++   }
++
++   private boolean nearEnough(Location a, Location b) {
++      double r = this.dsConfig.getAntiEspNearRevealRadius();
++      return r > 0.0 && a.getWorld() == b.getWorld() && a.distanceSquared(b) <= r * r;
++   }
++
++   /** Fail-closed from the other side: {@code target} just joined/teleported, so hide it from everyone first. */
++   public void failCloseTarget(Player target, Location around) {
++      if (!this.enabled || !this.dsConfig.isAntiEspFailClosed() || !this.dsConfig.isAntiEspObfuscatePlayers()) {
++         return;
++      }
++
++      double r = this.dsConfig.getAntiEspPlayerRadius();
++      double rSq = r * r;
++      for(Player viewer : around.getWorld().getPlayers()) {
++         if (viewer.equals(target) || viewer.getLocation().distanceSquared(around) > rSq || this.nearEnough(viewer.getLocation(), around) || viewer.hasPermission("stopesp.bypass") || !this.dsConfig.isEnabledWorld(viewer.getWorld()) || this.isTrusted(viewer, target)) {
++            continue;
++         }
++
++         Map<UUID, LosCache> cache = this.losCache.get(viewer.getUniqueId());
++         if (cache != null) {
++            cache.remove(target.getUniqueId());
++         }
++
++         Map<UUID, Long> seen = this.lastSeen.get(viewer.getUniqueId());
++         if (seen != null) {
++            seen.remove(target.getUniqueId());
++         }
++
++         Map<UUID, Entity> hidden = this.hiddenEntities.computeIfAbsent(viewer.getUniqueId(), (k) -> new ConcurrentHashMap());
++         if (hidden.put(target.getUniqueId(), target) == null) {
++            viewer.hideEntity(this.plugin, target);
++         }
++      }
++   }
++
+    /** Removes the old "stopesp_hidden" team (it is saved with the world's scoreboard) from every scoreboard. */
+    private void purgeNameplateTeams() {
+       Scheduler.run(this.plugin, () -> {
+diff -ruN a/src/main/java/com/github/tejaslamba2006/stopesp/manager/AntiXrayManager.java b/src/main/java/com/github/tejaslamba2006/stopesp/manager/AntiXrayManager.java
+--- a/src/main/java/com/github/tejaslamba2006/stopesp/manager/AntiXrayManager.java	2026-11-27 08:04:12.326859576 +0000
++++ b/src/main/java/com/github/tejaslamba2006/stopesp/manager/AntiXrayManager.java	2026-11-27 08:14:24.147529125 +0000
+@@ -9,6 +9,8 @@
+ import java.util.ArrayList;
+ import java.util.BitSet;
+ import java.util.Comparator;
++import java.util.EnumMap;
++import java.util.EnumSet;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -378,7 +380,7 @@
+                   data.visibilityBuffer.put(blockKey, failCount);
+                   if (failCount >= bufferThreshold) {
+                      if (data.visibleBlocks.remove(blockKey)) {
+-                        totalChanges.put(blockKey, this.getFakeMaterial(scanWorld, BlockKey.y(blockKey)).createBlockData());
++                        totalChanges.put(blockKey, this.fakeMaterial(scanWorld, BlockKey.x(blockKey), BlockKey.y(blockKey), BlockKey.z(blockKey)).createBlockData());
+                      }
+                   } else if (data.visibleBlocks.contains(blockKey)) {
+                      unsettledChunks.add(chunkData.chunkKey);
+@@ -728,7 +730,7 @@
+                         int wx = (cx << 4) + relX;
+                         int wz = (cz << 4) + relZ;
+                         if (!data.visibleBlocks.contains(BlockKey.pack(wx, blockY, wz))) {
+-                           changes.put(new Location(world, (double)wx, (double)blockY, (double)wz), this.getFakeMaterial(world, blockY).createBlockData());
++                           changes.put(new Location(world, (double)wx, (double)blockY, (double)wz), this.fakeMaterial(world, wx, blockY, wz).createBlockData());
+                         }
+                      }
+ 
+@@ -800,6 +802,7 @@
+             int chunkX = chunk.getX();
+             int chunkZ = chunk.getZ();
+             World world = chunk.getWorld();
++            final boolean contextMode = this.dsConfig.getFakeBlockMode().equalsIgnoreCase("CONTEXT");
+             this.workerPool.submit(() -> {
+                if (!worldIndex.containsKey(chunkKey)) {
+                   ChunkData chunkData = new ChunkData(chunkKey, minHeight);
+@@ -820,6 +823,12 @@
+                               chunkData.protectedBlocks.set(bitIndex);
+                               hasProtected = true;
+                               chunkData.originalBlockData.put(BlockKey.pack((chunkX << 4) + x, y, (chunkZ << 4) + z), snapshot.getBlockData(x, y, z));
++                              if (contextMode) {
++                                 Material fake = this.contextFake(snapshot, x, y, z, minHeight, maxHeight);
++                                 if (fake != null) {
++                                    chunkData.fakeBlocks.put(BlockKey.pack((chunkX << 4) + x, y, (chunkZ << 4) + z), fake);
++                                 }
++                              }
+                            }
+                         }
+                      }
+@@ -895,9 +904,65 @@
+       }
+    }
+ 
++   /** Natural full blocks a hidden block may be disguised as in CONTEXT mode (never ores, never anything see-through). */
++   private static final Set<Material> FAKE_CANDIDATES = EnumSet.of(
++         Material.STONE, Material.DEEPSLATE, Material.DIRT, Material.GRASS_BLOCK, Material.COARSE_DIRT, Material.PODZOL,
++         Material.MYCELIUM, Material.SAND, Material.RED_SAND, Material.GRAVEL, Material.SANDSTONE, Material.RED_SANDSTONE,
++         Material.ANDESITE, Material.DIORITE, Material.GRANITE, Material.TUFF, Material.CLAY, Material.NETHERRACK,
++         Material.BASALT, Material.BLACKSTONE, Material.END_STONE, Material.TERRACOTTA, Material.CALCITE,
++         Material.DRIPSTONE_BLOCK, Material.MOSS_BLOCK);
++
++   private static final int[][] NEIGHBOURS = new int[][]{{0, -1, 0}, {1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}};
++
++   /**
++    * CONTEXT mode: look at the natural blocks touching this one (in the same chunk) and disguise it as the most
++    * common one, so a hidden chest under grass reads as grass, in a dirt tunnel as dirt, in deepslate as deepslate.
++    * Returns null when nothing natural is adjacent (caller falls back to the per-dimension default).
++    */
++   private Material contextFake(ChunkSnapshot snapshot, int x, int y, int z, int minHeight, int maxHeight) {
++      EnumMap<Material, Integer> counts = new EnumMap<>(Material.class);
++      Material best = null;
++      int bestCount = 0;
++      for(int[] n : NEIGHBOURS) {
++         int nx = x + n[0];
++         int ny = y + n[1];
++         int nz = z + n[2];
++         if (nx < 0 || nx > 15 || nz < 0 || nz > 15 || ny < minHeight || ny >= maxHeight) {
++            continue;
++         }
++
++         Material m = snapshot.getBlockType(nx, ny, nz);
++         if (!FAKE_CANDIDATES.contains(m)) {
++            continue;
++         }
++
++         int c = counts.merge(m, 1, Integer::sum);
++         if (c > bestCount) { // strict: on a tie the earlier neighbour (the block below) wins
++            best = m;
++            bestCount = c;
++         }
++      }
++
++      return best;
++   }
++
++   /** The fake block for this exact position. All send paths use this so a block is always disguised the same way. */
++   public Material fakeMaterial(World world, int x, int y, int z) {
++      if (world != null && this.dsConfig.getFakeBlockMode().equalsIgnoreCase("CONTEXT")) {
++         Map<Long, ChunkData> worldIndex = (Map)this.chunkMap.get(world.getUID());
++         ChunkData cd = worldIndex == null ? null : (ChunkData)worldIndex.get(Chunk.getChunkKey(x >> 4, z >> 4));
++         Material m = cd == null ? null : cd.fakeBlocks.get(BlockKey.pack(x, y, z));
++         if (m != null) {
++            return m;
++         }
++      }
++
++      return this.getFakeMaterial(world, y);
++   }
++
+    private Material getFakeMaterial(World world, int blockY) {
+       String mode = this.dsConfig.getFakeBlockMode();
+-      if (!mode.equalsIgnoreCase("AUTO")) {
++      if (!mode.equalsIgnoreCase("AUTO") && !mode.equalsIgnoreCase("CONTEXT")) {
+          try {
+             return Material.valueOf(mode.toUpperCase());
+          } catch (IllegalArgumentException var4) {
+@@ -969,6 +1034,7 @@
+       final BitSet protectedBlocks = new BitSet();
+       final BitSet occludingBlocks = new BitSet();
+       final Map<Long, BlockData> originalBlockData = new ConcurrentHashMap();
++      final Map<Long, Material> fakeBlocks = new ConcurrentHashMap();
+       volatile int version;
+ 
+       public ChunkData(long chunkKey, int worldMinHeight) {
+diff -ruN a/src/main/java/com/github/tejaslamba2006/stopesp/manager/DeepShieldConfig.java b/src/main/java/com/github/tejaslamba2006/stopesp/manager/DeepShieldConfig.java
+--- a/src/main/java/com/github/tejaslamba2006/stopesp/manager/DeepShieldConfig.java	2026-11-27 08:04:12.326845654 +0000
++++ b/src/main/java/com/github/tejaslamba2006/stopesp/manager/DeepShieldConfig.java	2026-11-27 08:15:41.983164777 +0000
+@@ -87,6 +87,10 @@
+    private double antiEspPlayerRadius;
+    private long antiEspHideDelayMs;
+    private double antiEspPeekPadding;
++   private int antiEspMinVisibleSamples;
++   private double antiEspNearRevealRadius;
++   private double antiEspThirdPersonReach;
++   private boolean antiEspFailClosed;
+    private boolean leavesBlockSight;
+    private boolean antiEspObfuscatePlayers;
+    private boolean antiEspObfuscateMobs;
+@@ -141,6 +145,10 @@
+       this.antiEspPlayerRadius = Math.max(this.antiEspRevealRadius, this.config.getDouble("anti-esp.player-radius", 160.0));
+       this.antiEspHideDelayMs = Math.max(0L, this.config.getLong("anti-esp.hide-delay-ms", 400L));
+       this.antiEspPeekPadding = Math.max(0.0, this.config.getDouble("anti-esp.peek-padding", 0.4));
++      this.antiEspMinVisibleSamples = Math.max(1, this.config.getInt("anti-esp.min-visible-samples", 2));
++      this.antiEspNearRevealRadius = Math.max(0.0, this.config.getDouble("anti-esp.near-reveal-radius", 0.0));
++      this.antiEspThirdPersonReach = Math.min(8.0, Math.max(0.0, this.config.getDouble("anti-esp.third-person-reach", 4.0)));
++      this.antiEspFailClosed = this.config.getBoolean("anti-esp.fail-closed", true);
+       this.leavesBlockSight = this.config.getBoolean("anti-esp.leaves-block-sight", true);
+       this.antiEspObfuscatePlayers = this.config.getBoolean("anti-esp.obfuscate-players", true);
+       this.antiEspObfuscateMobs = this.config.getBoolean("anti-esp.obfuscate-mobs", true);
+@@ -381,6 +389,10 @@
+    public double getAntiEspPlayerRadius() { return this.antiEspPlayerRadius; }
+    public long getAntiEspHideDelayMs() { return this.antiEspHideDelayMs; }
+    public double getAntiEspPeekPadding() { return this.antiEspPeekPadding; }
++   public int getAntiEspMinVisibleSamples() { return this.antiEspMinVisibleSamples; }
++   public double getAntiEspNearRevealRadius() { return this.antiEspNearRevealRadius; }
++   public double getAntiEspThirdPersonReach() { return this.antiEspThirdPersonReach; }
++   public boolean isAntiEspFailClosed() { return this.antiEspFailClosed; }
+    public boolean isLeavesBlockSight() { return this.leavesBlockSight; }
+ 
+    public double getAntiEspRevealRadius() {
+diff -ruN a/src/main/resources/config.yml b/src/main/resources/config.yml
+--- a/src/main/resources/config.yml	2026-11-27 08:04:12.326994204 +0000
++++ b/src/main/resources/config.yml	2026-11-27 08:15:41.983401921 +0000
+@@ -38,9 +38,12 @@
+ frustum-culling: true
+ 
+ # Material sent to the client as a fake block to replace hidden ones.
+-# AUTO = smart per-dimension (Stone / Deepslate / Netherrack / End Stone)
+-# Other options: AIR, STONE, DEEPSLATE, NETHERRACK, END_STONE
+-fake-block-mode: AUTO
++# CONTEXT = disguise each hidden block as the natural block it is touching (grass under a grass floor,
++#           dirt in a dirt tunnel, deepslate, sand, tuff, ...). Falls back to AUTO where nothing natural is adjacent.
++# AUTO    = per-dimension (Stone / Deepslate below Y0 / Netherrack / End Stone)
++# Other options: AIR, STONE, DEEPSLATE, NETHERRACK, END_STONE (or any block name)
++# Chunks that are already indexed keep their old fake blocks until a restart or /stopesp off + on.
++fake-block-mode: CONTEXT
+ 
+ # MAXIMUM worker threads for async visibility calculations. The pool grows and shrinks on
+ # demand between performance.min-worker-threads and this value.
+@@ -211,6 +214,25 @@
+   peek-padding: 0.4
+   hide-delay-ms: 400
+ 
++  # Nametag/ESP hardening (nothing here hides a player who is genuinely in line of sight):
++  # min-visible-samples: how many of the 15 body sample points (3 centre line + 12 hitbox corners) must be
++  #   visible before a player is sent. 1 = old behaviour (one visible boot corner reveals the whole player,
++  #   including a nametag drawn above the head through the wall). 2-3 stops that without affecting anyone
++  #   who is really on screen. Values above ~4 can start to delay players peeking round corners.
++  min-visible-samples: 2
++  # near-reveal-radius: players this close are always sent, even behind walls (0 = off). This gives the vanilla
++  #   "faint nametag through the floor" feel at short range, but it is a deliberate leak: a nametag cheat sees
++  #   them too. Keep it small (4-8) or leave it at 0.
++  near-reveal-radius: 0.0
++  # third-person-reach: F5 support. Players are also checked from where your third-person camera would be
++  #   (up to this many blocks behind you, and in front of you for the front view, pulled in by walls like the
++  #   vanilla camera). 4.0 matches vanilla; 0 = off. Costs a few extra rays per player, run off-thread.
++  third-person-reach: 4.0
++  # fail-closed: when a viewer joins/teleports/respawns/changes world, or a player joins/teleports, hide the
++  #   players around them first and reveal only after a line-of-sight check passes. Closes the 1-3 tick window
++  #   in which the server's entity tracker sends everyone before the first scan has run.
++  fail-closed: true
++
+   # Leaves block line of sight (players/blocks behind trees are hidden). Stops nametag/ESP through foliage.
+   leaves-block-sight: true
+ 

@@ -1,0 +1,30 @@
+name: StopESP
+version: '${version}'
+main: com.github.tejaslamba2006.stopesp.StopESP
+api-version: '1.21'
+authors: [ tejaslamba2006 ]
+depend: [ ProtocolLib ]
+softdepend: [ floodgate, Geyser-Spigot ]
+folia-supported: true
+
+commands:
+  stopesp:
+    description: Main command for StopESP
+    usage: /stopesp <reload|on|off|debug|violations|friend>
+
+permissions:
+  stopesp.admin:
+    description: Access to all StopESP commands
+    default: op
+
+  stopesp.bypass:
+    description: Bypass StopESP – blocks are never hidden for this player
+    default: false
+
+  stopesp.alerts:
+    description: Receive in-game StopESP x-ray violation alerts
+    default: op
+
+  stopesp.friend:
+    description: Manage your StopESP friend list (/stopesp friend)
+    default: true

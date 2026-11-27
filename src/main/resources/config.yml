@@ -1,0 +1,386 @@
+# ================================================================
+# StopESP Configuration
+# ================================================================
+
+# Config format version. Managed automatically: when you update the plugin, any new
+# options are added to this file (your values are kept, a .bak copy is saved). Don't edit.
+config-version: 6
+
+# Whether to send the thanks/support message to ops when they join.
+show-thanks-message: true
+
+# The distance (in blocks) at which protected blocks are revealed to the player.
+reveal-radius: 20.0
+
+# Per-world reveal-radius overrides (optional).
+# If a world is listed here, its value overrides the global reveal-radius.
+world-radius-overrides:
+  # world_nether: 15.0
+  # world_the_end: 12.0
+
+# Worlds where StopESP is ACTIVE.
+# In all other worlds, the system will do nothing (better performance).
+enabled-worlds:
+  - world
+  - world_nether
+  - world_the_end
+
+# How many server ticks between each visibility scan.
+# 1 = every tick (smoothest, most CPU). 2-4 = good balance.
+scan-interval: 1
+
+# How many consecutive scan cycles a block must be invisible before it gets hidden again.
+# Higher = less flickering, but slower hide reaction. Default: 3
+visibility-buffer: 3
+
+# Frustum culling: skip blocks that are behind the player (outside ~180° FOV).
+# Disabling this reveals blocks behind you earlier, but uses more CPU.
+frustum-culling: true
+
+# Material sent to the client as a fake block to replace hidden ones.
+# CONTEXT = disguise each hidden block as the natural block it is touching (grass under a grass floor,
+#           dirt in a dirt tunnel, deepslate, sand, tuff, ...). Falls back to AUTO where nothing natural is adjacent.
+# AUTO    = per-dimension (Stone / Deepslate below Y0 / Netherrack / End Stone)
+# Other options: AIR, STONE, DEEPSLATE, NETHERRACK, END_STONE (or any block name)
+# Chunks that are already indexed keep their old fake blocks until a restart or /stopesp off + on.
+fake-block-mode: CONTEXT
+
+# MAXIMUM worker threads for async visibility calculations. The pool grows and shrinks on
+# demand between performance.min-worker-threads and this value.
+# -1 = auto (CPU cores, at least 2, at most 8).
+worker-threads: -1
+
+# Blocks that will be HIDDEN from the player until they are nearby.
+# Master switch for hiding ores (every *_ORE block and ANCIENT_DEBRIS in protected-blocks).
+# false = ores are never hidden; only base blocks (chests, redstone, beds...) and Anti-ESP
+# entities are protected. Takes effect for newly loaded chunks; restart to apply everywhere.
+hide-ores: false
+
+# Rewrite the chunk packet per player so protected blocks are replaced BEFORE the chunk is sent
+# (the real blocks never reach the client, not even briefly or to a packet sniffer).
+# It checks itself: if the packet layout isn't what it expects it leaves the packet alone and
+# the older "hide right after sending" path is used. Set false to always use that older path.
+chunk-rewrite:
+  enabled: true
+
+# Also hide a built-in set of base-building blocks (furnaces, brewing stands, enchanting
+# tables, beacons, respawn anchors, cauldrons, crafters, vaults, copper chests, workstations,
+# decorated pots...). Added on top of protected-blocks; unknown names are skipped.
+base-blocks-preset: true
+
+protected-blocks:
+  # Containers & Storage
+  - CHEST
+  - TRAPPED_CHEST
+  - BARREL
+  - ENDER_CHEST
+  - SHULKER_BOX
+  - WHITE_SHULKER_BOX
+  - ORANGE_SHULKER_BOX
+  - MAGENTA_SHULKER_BOX
+  - LIGHT_BLUE_SHULKER_BOX
+  - YELLOW_SHULKER_BOX
+  - LIME_SHULKER_BOX
+  - PINK_SHULKER_BOX
+  - GRAY_SHULKER_BOX
+  - LIGHT_GRAY_SHULKER_BOX
+  - CYAN_SHULKER_BOX
+  - PURPLE_SHULKER_BOX
+  - BLUE_SHULKER_BOX
+  - BROWN_SHULKER_BOX
+  - GREEN_SHULKER_BOX
+  - RED_SHULKER_BOX
+  - BLACK_SHULKER_BOX
+  # Beds & Anvils
+  - WHITE_BED
+  - ORANGE_BED
+  - MAGENTA_BED
+  - LIGHT_BLUE_BED
+  - YELLOW_BED
+  - LIME_BED
+  - PINK_BED
+  - GRAY_BED
+  - LIGHT_GRAY_BED
+  - CYAN_BED
+  - PURPLE_BED
+  - BLUE_BED
+  - BROWN_BED
+  - GREEN_BED
+  - RED_BED
+  - BLACK_BED
+  - ANVIL
+  - CHIPPED_ANVIL
+  - DAMAGED_ANVIL
+  # Spawners
+  - SPAWNER
+  # --- REDSTONE ---
+  - REDSTONE_BLOCK
+  - REDSTONE_WIRE
+  - REDSTONE_TORCH
+  - REDSTONE_WALL_TORCH
+  - STICKY_PISTON
+  - PISTON
+  - PISTON_HEAD
+  - MOVING_PISTON
+  - HOPPER
+  - DISPENSER
+  - DROPPER
+  - OBSERVER
+  - REPEATER
+  - COMPARATOR
+  - TARGET
+  - LECTERN
+  - DAYLIGHT_DETECTOR
+  - TRIPWIRE_HOOK
+  - TRIPWIRE
+  - BELL
+  - LEVER
+  - NOTE_BLOCK
+  - JUKEBOX
+  # Buttons
+  # Pressure Plates
+  # --- ORES ---
+  - DIAMOND_ORE
+  - DEEPSLATE_DIAMOND_ORE
+  - ANCIENT_DEBRIS
+  - GOLD_ORE
+  - DEEPSLATE_GOLD_ORE
+  - IRON_ORE
+  - DEEPSLATE_IRON_ORE
+  - COAL_ORE
+  - DEEPSLATE_COAL_ORE
+  - EMERALD_ORE
+  - DEEPSLATE_EMERALD_ORE
+  - REDSTONE_ORE
+  - DEEPSLATE_REDSTONE_ORE
+  - LAPIS_ORE
+  - DEEPSLATE_LAPIS_ORE
+  - COPPER_ORE
+  - DEEPSLATE_COPPER_ORE
+  - NETHER_QUARTZ_ORE
+  - NETHER_GOLD_ORE
+  - GILDED_BLACKSTONE
+  # --- WORKSTATIONS ---
+  - FURNACE
+  - BLAST_FURNACE
+  - SMOKER
+  - CRAFTING_TABLE
+  - ENCHANTING_TABLE
+  - BREWING_STAND
+  - ANVIL
+  - CHIPPED_ANVIL
+  - DAMAGED_ANVIL
+  - CAULDRON
+  - COMPOSTER
+  - FLETCHING_TABLE
+  - GRINDSTONE
+  - LOOM
+  - SMITHING_TABLE
+  - STONECUTTER
+  - CARTOGRAPHY_TABLE
+  # --- FARMING & NATURE ---
+  - BEE_NEST
+  - BEEHIVE
+  - TURTLE_EGG
+  - SNIFFER_EGG
+  - SUSPICIOUS_SAND
+  - SUSPICIOUS_GRAVEL
+  - AMETHYST_CLUSTER
+  - BUDDING_AMETHYST
+  # --- SCULK ---
+  - SCULK_SENSOR
+  - CALIBRATED_SCULK_SENSOR
+  - SCULK_SHRIEKER
+  - SCULK_CATALYST
+  - DECORATED_POT
+
+# ================================================================
+# Anti-ESP for Entities (Players & Mobs)
+# ================================================================
+anti-esp:
+  # Enable or disable Anti-ESP globally.
+  enabled: true
+
+  # Distance in blocks within which entities are revealed/checked.
+  reveal-radius: 32.0
+
+  # Players are line-of-sight checked out to this distance (blocks). Beyond it they are shown through walls,
+  # so set it to at least the player tracking range (default ~48-128). Mobs still use reveal-radius.
+  player-radius: 160.0
+
+  # Anti-pop-in (players never vanish while you could really see them):
+  # peek-padding: also test from this many blocks left/right of your eye (0 = off).
+  # hide-delay-ms: keep a player visible this long after losing sight, so there is no flicker (0 = off).
+  peek-padding: 0.4
+  hide-delay-ms: 400
+
+  # Nametag/ESP hardening (nothing here hides a player who is genuinely in line of sight):
+  # min-visible-samples: how many of the 15 body sample points (3 centre line + 12 hitbox corners) must be
+  #   visible before a player is sent. 1 = old behaviour (one visible boot corner reveals the whole player,
+  #   including a nametag drawn above the head through the wall). 2-3 stops that without affecting anyone
+  #   who is really on screen. Values above ~4 can start to delay players peeking round corners.
+  min-visible-samples: 2
+  # near-reveal-radius: players this close are always sent, even behind walls (0 = off). This gives the vanilla
+  #   "faint nametag through the floor" feel at short range, but it is a deliberate leak: a nametag cheat sees
+  #   them too. Keep it small (4-8) or leave it at 0.
+  near-reveal-radius: 0.0
+  # third-person-reach: F5 support. Players are also checked from where your third-person camera would be
+  #   (up to this many blocks behind you, and in front of you for the front view, pulled in by walls like the
+  #   vanilla camera). 4.0 matches vanilla; 0 = off. Costs a few extra rays per player, run off-thread.
+  third-person-reach: 4.0
+  # fail-closed: when a viewer joins/teleports/respawns/changes world, or a player joins/teleports, hide the
+  #   players around them first and reveal only after a line-of-sight check passes. Closes the 1-3 tick window
+  #   in which the server's entity tracker sends everyone before the first scan has run.
+  fail-closed: true
+
+  # Leaves block line of sight (players/blocks behind trees are hidden). Stops nametag/ESP through foliage.
+  leaves-block-sight: true
+
+  # Obfuscate other players.
+  obfuscate-players: true
+
+  # Obfuscate other mobs (monsters, passive animals, villagers, etc.).
+  obfuscate-mobs: true
+
+  # No longer used: the scoreboard-team nameplate trick was removed because it broke the tab list.
+  # Hidden players are not sent to the client at all, so there is no nameplate to hide.
+  hide-nameplates: false
+
+  # Also hide entities that are already invisible (e.g., spectators).
+  hide-invisible-entities: false
+
+  # Additional entity types to hide (similar to block list above).
+  extra-entity-hide:
+    - ZOMBIE
+    - SKELETON
+
+  # Hide dropped item entities until they are in line of sight (stops loot/stash ESP).
+  hide-items: true
+
+  # Hide arrows, tridents, pearls, fireworks etc. Your own projectiles are never hidden.
+  hide-projectiles: true
+
+  # Hide item frames (and glow item frames) until in line of sight.
+  hide-item-frames: true
+
+  # Hide armor stands even when obfuscate-mobs is false.
+  hide-armor-stands: true
+
+  # Hide paintings and leash knots until in line of sight.
+  hide-paintings: true
+  hide-leash-knots: true
+
+  # Hide boats (incl. chest boats/rafts) and every minecart type until in line of sight.
+  # The vehicle you are riding is never hidden from you.
+  hide-boats: true
+  hide-minecarts: true
+
+  # Hide villagers and wandering traders (like players) until in line of sight, even when
+  # obfuscate-mobs is false. Glass and other transparent blocks still count as visible, so
+  # trading halls behind glass keep working.
+  hide-villagers: true
+
+  # Radar protection: players that ARE visible but far away get delayed and slightly
+  # jittered movement, so radar mods can't track them precisely. The server still sends an
+  # exact position now and then (vanilla re-sync), so this blurs rather than blocks.
+  movement-jitter:
+    enabled: true
+    # Only applies to players farther than this many blocks from the viewer.
+    min-distance: 48.0
+    # Movement is batched and sent once every N ticks at that range.
+    update-interval: 4
+    # Max random position error, in blocks (error never accumulates).
+    jitter-blocks: 0.5
+
+# ================================================================
+# Y-level rules (x-ray CPU saver). Off by default.
+# ================================================================
+y-rules:
+  enabled: false
+  # Ores at or above this Y are NOT hidden at all (cheap: they are never tracked).
+  # Only affects ores (*_ORE and ANCIENT_DEBRIS); containers etc. are unaffected.
+  # Chunks already indexed keep old data until restart or /stopesp off + on.
+  skip-ores-above-y: 64
+  # Ores below that Y are only revealed-checked within this many blocks of the player.
+  # Smaller = cheaper. Must be <= reveal-radius (it is capped to it).
+  ore-reveal-radius: 12.0
+
+# ================================================================
+# Violation log and staff alerts
+# ================================================================
+# Counts "jump" breaks: a player breaks a hidden ore/block that is NOT connected to the
+# tunnel they were just digging. This is a heuristic, not proof, so it only alerts staff
+# (permission: stopesp.alerts) and never punishes.
+violations:
+  enabled: true
+  # Alert when a player reaches this many violations inside the window.
+  alert-threshold: 3
+  window-seconds: 300
+  alert-cooldown-seconds: 30
+  # A break within this many blocks of the previous break (last 15s) counts as tunneling.
+  tunnel-chain-distance: 3.0
+  log-to-console: true
+  # Optional Discord webhook URL (https://discord.com/api/webhooks/...). Empty = off.
+  discord-webhook: ""
+
+# ================================================================
+# Block entities
+# ================================================================
+block-entities:
+  # Don't send block-entity data updates (signs, spawners, banners, heads...) for blocks
+  # that are currently hidden from the player. Only applies to blocks listed in
+  # protected-blocks, so add e.g. SPAWNER or the *_SIGN types there if you want them covered.
+  hide-updates: true
+
+# ================================================================
+# Performance
+# ================================================================
+performance:
+  tps-backoff:
+    # Scan less often while the server is struggling (needs Paper; ignored on Folia).
+    enabled: true
+    # Average tick time (ms) above which scanning slows down. 50ms = 20 TPS limit.
+    mspt-threshold: 35.0
+    # Never slow scanning by more than this factor.
+    max-multiplier: 4
+  # Max entities checked per player per scan. Closest ones are always checked, the rest
+  # rotate; unchecked new entities stay hidden. 0 = unlimited.
+  max-entities-per-player: 64
+  # Max block line-of-sight checks per player per scan (nearest first). 0 = unlimited.
+  max-block-checks-per-scan: 4000
+  # Lowest number of worker threads kept alive (the pool scales up when work queues up).
+  min-worker-threads: 1
+  # Idle players are scanned much less often.
+  afk-backoff:
+    enabled: true
+    idle-seconds: 20
+    # While idle, scan every Nth interval.
+    multiplier: 5
+    # Spectators don't need much hiding if you only care about survival players.
+    skip-spectators: false
+  # Only re-check far chunks when something there changed or the player moved a bit.
+  dirty-chunks:
+    enabled: true
+    # Re-check a far chunk after the player moves this many blocks.
+    move-distance: 2.0
+    # Chunks closer than this are always re-checked every scan.
+    near-radius: 32.0
+
+# ================================================================
+# Who can always see whom
+# ================================================================
+visibility:
+  # Players on the same scoreboard team are never hidden from each other.
+  team-visible: true
+  # Mutual friends are never hidden from each other. Both players must add each other:
+  # /stopesp friend add <player>   (permission: stopesp.friend, default: everyone)
+  friends-enabled: true
+
+# ================================================================
+# Bedrock (Geyser / Floodgate) players
+# ================================================================
+bedrock:
+  # Don't apply movement jitter to/for Bedrock players (their client interpolates differently).
+  disable-jitter: true
+  # Scan Bedrock viewers N times less often (1 = same as Java players).
+  scan-multiplier: 1
